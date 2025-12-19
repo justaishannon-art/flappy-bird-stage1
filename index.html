@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width,height=device-height,
+initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+
+<title>Flappy Bird – Stage 1</title>
+
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  touch-action: manipulation;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+canvas {
+  width: 100vw;
+  height: 100vh;
+  max-width: 360px;
+  max-height: 640px;
+  touch-action: none;
+}
+</style>
+</head>
+<body>
+
+<canvas id="game" width="360" height="640"></canvas>
+
+<script>
+// ==================================================
+// CANVAS
+// ==================================================
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// ==================================================
+// IMAGE ASSETS
+// ==================================================
+const bg = new Image();
+const birdImg = new Image();
+const pipeImg = new Image();
+const groundImg = new Image();
+
+bg.src = "bg.png";
+birdImg.src = "bird.png";
+pipeImg.src = "pipe.png";
+groundImg.src = "ground.png";
+
+// ==================================================
+// AUDIO ASSETS (SAFE LOAD)
+// ==================================================
+let audioMissing = [];
+
+function loadSound(src) {
+  const a = new Audio();
+  a.src = src;
+  a.onerror = () => audioMissing.push(src);
+  return a;
+}
+
+const jumpSound  = loadSound("jump.wav");
+const scoreSound = loadSound("score.wav");
+const hitSound   = loadSound("hit.wav");
+const bgm        = loadSound("bg1.mp3");
+
+bgm.loop = false;
+bgm.volume = 0.4;
+
+// ==================================================
+// CONSTANTS
+// ==================================================
+const GRAVITY = 0.5;
+const JUMP = -8;
+const BIRD_SIZE = 34;
+
+const PIPE_WIDTH = 60;
+const PIPE_GAP = 160;
+const PIPE_SPEED = 2.5;
+const PIPE_INTERVAL = 100;
+
+// ==================================================
+// GAME STATE
+// ==================================================
+let bird, pipes, score, frame;
+let gameStarted = false;
+let gameOver = false;
+
+let groundX = 0;
+let GROUND_Y = 0;
+let GROUND_WIDTH = 0;
+
+// ==================================================
+// RESET
+// ==================================================
+function resetGame(startMusic = false) {
+  bird = {
+    x: 80,
+    y: canvas.height / 2,
+    w: BIRD_SIZE,
+    h: BIRD_SIZE,
+    vy: 0
+  };
+
+  pipes = [];
+  score = 0;
+  frame = 0;
+  gameStarted = startMusic;
+  gameOver = false;
+  groundX = 0;
+
+  bgm.pause();
+  bgm.currentTime = 0;
+  if (startMusic && audioMissing.length === 0) bgm.play();
+}
+
+// ==================================================
+// INPUT (MOBILE + DESKTOP)
+// ==================================================
+function input() {
+  if (!gameStarted && !gameOver) {
+    gameStarted = true;
+    if (audioMissing.length === 0) bgm.play();
+    return;
+  }
+
+  if (gameOver) return;
+
+  bird.vy = JUMP;
+  if (!audioMissing.includes("jump.wav")) {
+    jumpSound.currentTime = 0;
+    jumpSound.play();
+  }
+}
+
+canvas.addEventListener("touchstart", e => {
+  e.preventDefault();
+  input();
+}, { passive: false });
+
+canvas.addEventListener("mousedown", input);
+
+document.addEventListener("keydown", e => {
+  if (e.code === "Space") input();
+});
+
+// ==================================================
+// UPDATE
+// ==================================================
+function update() {
+  if (!gameStarted || gameOver) return;
+
+  bird.vy += GRAVITY;
+  bird.y += bird.vy;
+
+  if (frame % PIPE_INTERVAL === 0) {
+    const maxTop = GROUND_Y - PIPE_GAP - 80;
+    const top = Math.random() * maxTop + 40;
+    pipes.push({ x: canvas.width, top, passed: false });
+  }
+
+  pipes.forEach(p => {
+    p.x -= PIPE_SPEED;
+
+    if (!p.passed && p.x + PIPE_WIDTH < bird.x) {
+      p.passed = true;
+      score++;
+      if (!audioMissing.includes("score.wav")) {
+        scoreSound.currentTime = 0;
+        scoreSound.play();
+      }
+    }
+
+    if (
+      bird.x < p.x + PIPE_WIDTH &&
+      bird.x + bird.w > p.x &&
+      (bird.y < p.top || bird.y + bird.h > p.top + PIPE_GAP)
+    ) {
+      gameOverNow();
+    }
+  });
+
+  if (bird.y + bird.h >= GROUND_Y || bird.y < 0) {
+    gameOverNow();
+  }
+
+  pipes = pipes.filter(p => p.x + PIPE_WIDTH > 0);
+
+  groundX -= PIPE_SPEED;
+  if (groundX <= -GROUND_WIDTH) groundX = 0;
+
+  frame++;
+}
+
+// ==================================================
+// GAME OVER
+// ==================================================
+function gameOverNow() {
+  if (gameOver) return;
+  gameOver = true;
+
+  bgm.pause();
+  bgm.currentTime = 0;
+
+  if (!audioMissing.includes("hit.wav")) {
+    hitSound.currentTime = 0;
+    hitSound.play();
+  }
+}
+
+// ==================================================
+// DRAW
+// ==================================================
+function draw() {
+  ctx.drawImage(bg, 0, 0, canvas.width, canvas.height);
+
+  pipes.forEach(p => {
+    ctx.save();
+    ctx.scale(1, -1);
+    ctx.drawImage(pipeImg, p.x, -p.top, PIPE_WIDTH, p.top);
+    ctx.restore();
+
+    const bottomY = p.top + PIPE_GAP;
+    const bottomH = GROUND_Y - bottomY;
+    ctx.drawImage(pipeImg, p.x, bottomY, PIPE_WIDTH, bottomH);
+  });
+
+  ctx.drawImage(birdImg, bird.x, bird.y, bird.w, bird.h);
+
+  for (let i = 0; i < 3; i++) {
+    ctx.drawImage(groundImg, groundX + i * GROUND_WIDTH, GROUND_Y);
+  }
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "28px Arial";
+  ctx.fillText(score, canvas.width / 2 - 10, 50);
+
+  if (!gameStarted) {
+    ctx.font = "22px Arial";
+    ctx.fillText("TAP TO START", 100, 320);
+  }
+
+  if (gameOver) {
+    ctx.fillStyle = "red";
+    ctx.font = "32px Arial";
+    ctx.fillText("GAME OVER", 70, 300);
+  }
+
+  if (audioMissing.length > 0) {
+    ctx.fillStyle = "yellow";
+    ctx.font = "14px Arial";
+    ctx.fillText(
+      "Missing audio: " + audioMissing.join(", "),
+      10, canvas.height - 10
+    );
+  }
+}
+
+// ==================================================
+// LOOP
+// ==================================================
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ==================================================
+// INIT
+// ==================================================
+groundImg.onload = () => {
+  GROUND_WIDTH = groundImg.width;
+  GROUND_Y = canvas.height - groundImg.height;
+  resetGame(false);
+  loop();
+};
+</script>
+
+</body>
+</html>
